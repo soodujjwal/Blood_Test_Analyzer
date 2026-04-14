@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
@@ -19,18 +19,18 @@ db = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global mongo_client, db
-    # Connect to MongoDB
     try:
         mongo_client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
         mongo_client.admin.command('ping')
         db = mongo_client[DB_NAME]
+        app.state.db = db
+        app.state.mongo_client = mongo_client
         print("✓ MongoDB connected")
     except Exception as e:
         print(f"✗ MongoDB connection failed: {e}")
-    
+
     yield
-    
-    # Cleanup
+
     if mongo_client:
         mongo_client.close()
         print("✓ MongoDB disconnected")
@@ -47,8 +47,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(","),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Include routes
@@ -60,11 +60,11 @@ async def root():
     return {"message": "Blood Test Analyzer API is running", "docs": "/docs"}
 
 @app.get("/health")
-async def health_check():
-    global db
+async def health_check(req: Request):
+    client = getattr(req.app.state, "mongo_client", None)
     try:
-        if db:
-            db.admin.command('ping')
+        if client:
+            client.admin.command('ping')
             return {"status": "healthy", "database": "connected"}
         return {"status": "degraded", "database": "not connected"}
     except Exception as e:

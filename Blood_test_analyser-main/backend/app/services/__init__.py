@@ -4,6 +4,7 @@ from typing import Optional
 import jwt
 import bcrypt
 from bson.objectid import ObjectId
+from bson.errors import InvalidId
 
 class AuthService:
     SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
@@ -56,7 +57,7 @@ class MongoDBService:
     def __init__(self, db):
         self.db = db
 
-    async def create_user(self, email: str, full_name: str, hashed_password: str):
+    def create_user(self, email: str, full_name: str, hashed_password: str):
         user = {
             "email": email,
             "full_name": full_name,
@@ -67,16 +68,16 @@ class MongoDBService:
         result = self.db.users.insert_one(user)
         return str(result.inserted_id)
 
-    async def get_user_by_email(self, email: str):
+    def get_user_by_email(self, email: str):
         return self.db.users.find_one({"email": email})
 
-    async def get_user_by_id(self, user_id: str):
+    def get_user_by_id(self, user_id: str):
         try:
             return self.db.users.find_one({"_id": ObjectId(user_id)})
-        except:
+        except (InvalidId, Exception):
             return None
 
-    async def save_analysis(self, user_id: str, analysis: dict):
+    def save_analysis(self, user_id: str, analysis: dict):
         analysis_doc = {
             "user_id": user_id,
             "analysis": analysis,
@@ -85,18 +86,18 @@ class MongoDBService:
         result = self.db.analyses.insert_one(analysis_doc)
         return str(result.inserted_id)
 
-    async def get_user_analyses(self, user_id: str, limit: int = 50):
+    def get_user_analyses(self, user_id: str, limit: int = 50):
         analyses = list(self.db.analyses.find(
             {"user_id": user_id}
         ).sort("created_at", -1).limit(limit))
-        
+
         for analysis in analyses:
             analysis["id"] = str(analysis["_id"])
             del analysis["_id"]
-        
+
         return analyses
 
-    async def get_analysis_by_id(self, analysis_id: str, user_id: str):
+    def get_analysis_by_id(self, analysis_id: str, user_id: str):
         try:
             analysis = self.db.analyses.find_one({
                 "_id": ObjectId(analysis_id),
@@ -106,15 +107,15 @@ class MongoDBService:
                 analysis["id"] = str(analysis["_id"])
                 del analysis["_id"]
             return analysis
-        except:
+        except (InvalidId, Exception):
             return None
 
-    async def delete_analysis(self, analysis_id: str, user_id: str):
+    def delete_analysis(self, analysis_id: str, user_id: str):
         try:
             result = self.db.analyses.delete_one({
                 "_id": ObjectId(analysis_id),
                 "user_id": user_id
             })
             return result.deleted_count > 0
-        except:
+        except (InvalidId, Exception):
             return False

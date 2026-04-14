@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authAPI } from '../services/api';
+import { authAPI, getErrorMessage } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -41,7 +41,7 @@ export const AuthProvider = ({ children }) => {
 
       return true;
     } catch (err) {
-      setError(err.response?.data?.detail || 'Login failed');
+      setError(getErrorMessage(err, 'Login failed'));
       return false;
     }
   };
@@ -60,7 +60,7 @@ export const AuthProvider = ({ children }) => {
 
       return true;
     } catch (err) {
-      setError(err.response?.data?.detail || 'Signup failed');
+      setError(getErrorMessage(err, 'Signup failed'));
       return false;
     }
   };

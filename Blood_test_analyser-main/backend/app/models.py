@@ -54,7 +54,6 @@ class AnalysisResponse(BaseModel):
     grocery_list: List[str]
     recipes: List[Recipe]
     disclaimer: str
-    created_at: Optional[datetime] = None
 
 class AnalysisHistoryItem(BaseModel):
     id: Optional[str] = None

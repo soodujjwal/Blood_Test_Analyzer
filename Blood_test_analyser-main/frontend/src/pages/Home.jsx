@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, Plus, Trash2, ShoppingBag, UtensilsCrossed, CheckCircle2 } from 'lucide-react';
-import { analyzeAPI } from '../services/api';
+import { analyzeAPI, getErrorMessage } from '../services/api';
 
 const TEST_CATEGORIES = {
   'Cholesterol Panel': [
@@ -69,7 +69,7 @@ export default function Home() {
       const response = await analyzeAPI.analyze(resultsData, patientInfo);
       setAnalysis(response.data);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Analysis failed');
+      setError(getErrorMessage(err, 'Analysis failed'));
     } finally {
       setLoading(false);
     }

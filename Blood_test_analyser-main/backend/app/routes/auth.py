@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 from app.models import UserRegister, UserLogin, TokenResponse, RefreshTokenRequest, User
 from app.services import AuthService, MongoDBService
@@ -11,7 +11,7 @@ security = HTTPBearer()
 def get_db(request: Request):
     return request.app.state.db if hasattr(request.app.state, 'db') else None
 
-async def get_current_user(request: Request, credentials: Optional[HTTPAuthCredentials] = Depends(security)):
+async def get_current_user(request: Request, credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
     if not credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     
@@ -29,14 +29,12 @@ async def get_current_user(request: Request, credentials: Optional[HTTPAuthCrede
 async def signup(request: UserRegister, req: Request):
     db = MongoDBService(req.app.state.db)
     
-    # Check if user exists
-    existing = await db.get_user_by_email(request.email)
+    existing = db.get_user_by_email(request.email)
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
-    
-    # Create user
+
     hashed_pwd = AuthService.hash_password(request.password)
-    user_id = await db.create_user(request.email, request.full_name, hashed_pwd)
+    user_id = db.create_user(request.email, request.full_name, hashed_pwd)
     
     # Create tokens
     tokens = AuthService.create_tokens(user_id, request.email)
@@ -47,8 +45,7 @@ async def signup(request: UserRegister, req: Request):
 async def login(request: UserLogin, req: Request):
     db = MongoDBService(req.app.state.db)
     
-    # Find user
-    user = await db.get_user_by_email(request.email)
+    user = db.get_user_by_email(request.email)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     
@@ -75,7 +72,7 @@ async def refresh(request: RefreshTokenRequest):
 @router.get("/me", response_model=User)
 async def get_current_user_info(req: Request, user: dict = Depends(get_current_user)):
     db = MongoDBService(req.app.state.db)
-    user_data = await db.get_user_by_id(user["sub"])
+    user_data = db.get_user_by_id(user["sub"])
     
     if not user_data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")

@@ -1,6 +1,12 @@
+import asyncio
+import json
+import logging
 import os
-from openai import OpenAI
 from typing import List, Dict
+
+import google.generativeai as genai
+
+logger = logging.getLogger(__name__)
 
 REFERENCE_RANGES = {
     "Hemoglobin (Hb)": {"low": 12, "high": 17.5, "unit": "g/dL", "category": "CBC"},
@@ -99,13 +105,19 @@ def fallback_analysis(results: List[Dict], patient_info: Dict = None):
     }
 
 async def analyze_blood_test(results: List[Dict], patient_info: Dict = None):
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    
+    api_key = os.getenv("GOOGLE_API_KEY", "").strip()
+
     if not api_key:
         return fallback_analysis(results, patient_info)
 
+    def _ref_str(name):
+        ref = get_reference(name)
+        if ref:
+            return f"{ref['low']}–{ref['high']} {ref.get('unit', '')}"
+        return "n/a"
+
     ref_blob = "\n".join([
-        f"{r['name']}: {r['value']} {r.get('unit', '')} (ref: {get_reference(r['name']) or {}})"
+        f"{r['name']}: {r['value']} {r.get('unit', '')} (ref: {_ref_str(r['name'])})"
         for r in results
     ])
 
@@ -132,19 +144,17 @@ Respond in valid JSON only:
 }}"""
 
     try:
-        client = OpenAI(api_key=api_key)
-        completion = await asyncio.to_thread(
-            client.chat.completions.create,
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        response = await asyncio.to_thread(
+            model.generate_content,
+            prompt
         )
-        
-        raw = completion.choices[0].message.content.strip()
-        import json
+
+        raw = response.text.strip()
         cleaned = raw.replace("```json\n", "").replace("\n```", "").strip()
         parsed = json.loads(cleaned)
-        
+
         return {
             "summary": parsed.get("summary", []),
             "details": parsed.get("details", []),
@@ -154,7 +164,5 @@ Respond in valid JSON only:
             "disclaimer": parsed.get("disclaimer", "This is for education only. Not medical advice.")
         }
     except Exception as e:
-        print(f"OpenAI API error: {e}")
+        logger.error("Gemini API error: %s", e)
         return fallback_analysis(results, patient_info)
-
-import asyncio

@@ -39,7 +39,7 @@ api.interceptors.response.use(
         } catch (err) {
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
-          window.location.href = '/login';
+          window.location.reload();
         }
       }
     }
@@ -65,5 +65,9 @@ export const analyzeAPI = {
   getAnalysis: (id) => api.get(`/api/analyze/history/${id}`),
   deleteAnalysis: (id) => api.delete(`/api/analyze/history/${id}`),
 };
+
+export function getErrorMessage(err, fallback = 'An unexpected error occurred') {
+  return err?.response?.data?.detail || fallback;
+}
 
 export default api;

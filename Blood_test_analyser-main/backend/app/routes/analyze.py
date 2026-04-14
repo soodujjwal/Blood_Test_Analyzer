@@ -1,15 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List
 from app.models import AnalysisRequest, AnalysisResponse, AnalysisHistoryItem
 from app.services import MongoDBService
 from app.services.analysis_service import analyze_blood_test
-from fastapi import Request
 
 router = APIRouter()
 security = HTTPBearer()
 
-async def get_current_user(request: Request, credentials: HTTPAuthCredentials = Depends(security)):
+async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
     from app.services import AuthService
     
     if not credentials:
@@ -38,38 +37,28 @@ async def analyze(
     # Perform analysis
     analysis = await analyze_blood_test(results, patient_info)
     
-    # Save to database
-    analysis_id = await db.save_analysis(user["sub"], analysis)
-    
-    # Return response with ID and timestamp
-    from datetime import datetime
-    response = AnalysisResponse(
-        id=analysis_id,
-        **analysis,
-        created_at=datetime.utcnow()
-    )
-    
-    return response
+    analysis_id = db.save_analysis(user["sub"], analysis)
+    return AnalysisResponse(id=analysis_id, **analysis)
 
 @router.get("/history", response_model=List[AnalysisHistoryItem])
 async def get_history(
     req: Request,
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user),
+    limit: int = Query(50, le=100),
 ):
     db = MongoDBService(req.app.state.db)
-    
-    analyses = await db.get_user_analyses(user["sub"])
-    
-    history = []
-    for analysis in analyses:
-        history.append(AnalysisHistoryItem(
-            id=analysis.get("id"),
+
+    analyses = db.get_user_analyses(user["sub"], limit=limit)
+
+    return [
+        AnalysisHistoryItem(
+            id=a.get("id"),
             user_id=user["sub"],
-            analysis=AnalysisResponse(**analysis["analysis"]),
-            created_at=analysis["created_at"]
-        ))
-    
-    return history
+            analysis=AnalysisResponse(**a["analysis"]),
+            created_at=a["created_at"],
+        )
+        for a in analyses
+    ]
 
 @router.get("/history/{analysis_id}", response_model=AnalysisHistoryItem)
 async def get_analysis(
@@ -79,16 +68,16 @@ async def get_analysis(
 ):
     db = MongoDBService(req.app.state.db)
     
-    analysis = await db.get_analysis_by_id(analysis_id, user["sub"])
-    
+    analysis = db.get_analysis_by_id(analysis_id, user["sub"])
+
     if not analysis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
-    
+
     return AnalysisHistoryItem(
         id=analysis.get("id"),
         user_id=user["sub"],
         analysis=AnalysisResponse(**analysis["analysis"]),
-        created_at=analysis["created_at"]
+        created_at=analysis["created_at"],
     )
 
 @router.delete("/history/{analysis_id}")
@@ -99,7 +88,7 @@ async def delete_analysis(
 ):
     db = MongoDBService(req.app.state.db)
     
-    deleted = await db.delete_analysis(analysis_id, user["sub"])
+    deleted = db.delete_analysis(analysis_id, user["sub"])
     
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
