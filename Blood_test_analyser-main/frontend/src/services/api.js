@@ -61,6 +61,10 @@ export const authAPI = {
 export const analyzeAPI = {
   analyze: (results, patientInfo) =>
     api.post('/api/analyze/analyze', { results, patient_info: patientInfo }),
+  analyzePDF: (formData) =>
+    api.post('/api/analyze/upload-pdf', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
   getHistory: () => api.get('/api/analyze/history'),
   getAnalysis: (id) => api.get(`/api/analyze/history/${id}`),
   deleteAnalysis: (id) => api.delete(`/api/analyze/history/${id}`),

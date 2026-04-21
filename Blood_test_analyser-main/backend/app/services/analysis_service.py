@@ -4,7 +4,7 @@ import logging
 import os
 from typing import List, Dict
 
-import google.generativeai as genai
+from google import genai
 
 logger = logging.getLogger(__name__)
 
@@ -144,11 +144,11 @@ Respond in valid JSON only:
 }}"""
 
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        client = genai.Client(api_key=api_key)
         response = await asyncio.to_thread(
-            model.generate_content,
-            prompt
+            client.models.generate_content,
+            model="gemini-2.0-flash",
+            contents=prompt,
         )
 
         raw = response.text.strip()
@@ -166,3 +166,67 @@ Respond in valid JSON only:
     except Exception as e:
         logger.error("Gemini API error: %s", e)
         return fallback_analysis(results, patient_info)
+
+
+async def analyze_pdf_text(text: str):
+    api_key = os.getenv("GOOGLE_API_KEY", "").strip()
+
+    if not api_key:
+        return {
+            "summary": ["PDF analysis requires an AI API key. Configure GOOGLE_API_KEY in backend/.env to enable AI-powered PDF analysis."],
+            "details": [],
+            "suggestions": ["Add your Google Gemini API key to backend/.env to analyze PDF reports."],
+            "grocery_list": [],
+            "recipes": [],
+            "disclaimer": "This tool is for education only. It is not a substitute for medical advice."
+        }
+
+    prompt = f"""You are a medical education assistant. The user has uploaded a blood test report as a PDF. Your job is to:
+1. Extract ALL blood test values from the text below (name, numeric value, unit, and reference range if present).
+2. For each test value, determine if it is normal, low, or high based on standard medical reference ranges.
+3. Provide a brief summary in 2-4 sentences covering overall health picture.
+4. Give 1-3 practical suggestions.
+5. Provide a "grocery_list" of 8-16 specific, shoppable food items relevant to the results.
+6. Provide 3-5 simple recipes using those grocery items.
+
+PDF report text:
+{text[:10000]}
+
+Respond in valid JSON only:
+{{
+  "summary": ["string"],
+  "details": [{{"name": "...", "value": 0, "unit": "...", "reference_range": "...", "status": "normal|low|high", "note": "..."}}],
+  "suggestions": ["string"],
+  "grocery_list": ["specific item with quantity"],
+  "recipes": [{{"name": "...", "ingredients": ["..."], "instructions": ["..."]}}],
+  "disclaimer": "This is for education only. Not medical advice."
+}}"""
+
+    try:
+        client = genai.Client(api_key=api_key)
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model="gemini-2.0-flash",
+            contents=prompt,
+        )
+        raw = response.text.strip()
+        cleaned = raw.replace("```json\n", "").replace("\n```", "").strip()
+        parsed = json.loads(cleaned)
+        return {
+            "summary": parsed.get("summary", []),
+            "details": parsed.get("details", []),
+            "suggestions": parsed.get("suggestions", []),
+            "grocery_list": parsed.get("grocery_list", []),
+            "recipes": parsed.get("recipes", []),
+            "disclaimer": parsed.get("disclaimer", "This is for education only. Not medical advice.")
+        }
+    except Exception as e:
+        logger.error("Gemini PDF analysis error: %s", e)
+        return {
+            "summary": ["Could not analyze the PDF. Please try again or use manual entry."],
+            "details": [],
+            "suggestions": [],
+            "grocery_list": [],
+            "recipes": [],
+            "disclaimer": "This tool is for education only. It is not a substitute for medical advice."
+        }

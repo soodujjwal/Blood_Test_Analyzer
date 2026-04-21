@@ -1,330 +1,194 @@
-# Blood Test Analyzer - Full Stack Application
+# Blood Test Analyzer
 
-An AI-powered blood test analysis platform with user authentication, MongoDB persistence, and Docker deployment. Analyze lab results with AI insights, save history, and get personalized recommendations.
+An AI-powered web app where users enter blood test results and receive a plain-language interpretation, dietary suggestions, a shopping list, and recipes — powered by Google Gemini.
 
-## 🏗️ Architecture
+---
 
-```
-blood-test-analyzer/
-├── backend/              (FastAPI + Python)
-│   ├── app/
-│   │   ├── main.py      (FastAPI app with MongoDB)
-│   │   ├── models.py    (Pydantic request/response models)
-│   │   ├── routes/
-│   │   │   ├── auth.py  (signup, login, token refresh)
-│   │   │   └── analyze.py (blood test analysis endpoints)
-│   │   └── services/
-│   │       ├── __init__.py (AuthService, MongoDBService)
-│   │       └── analysis_service.py (AI analysis logic)
-│   ├── requirements.txt
-│   ├── Dockerfile
-│   └── .env.example
-│
-├── frontend/            (React + JavaScript)
-│   ├── src/
-│   │   ├── App.jsx
-│   │   ├── index.jsx
-│   │   ├── index.css
-│   │   ├── pages/
-│   │   │   ├── Login.jsx
-│   │   │   ├── Signup.jsx
-│   │   │   ├── Home.jsx
-│   │   │   └── History.jsx
-│   │   ├── services/
-│   │   │   └── api.js  (API client with axios)
-│   │   └── context/
-│   │       └── AuthContext.jsx (Auth state management)
-│   ├── package.json
-│   ├── vite.config.js
-│   ├── Dockerfile
-│   └── .env.example
-│
-├── docker-compose.yml  (MongoDB + Backend + Frontend)
-├── README.md
-└── .gitignore
-```
-
-## 🚀 Quick Start with Docker
+## How to run
 
 ### Prerequisites
-- Docker & Docker Compose installed
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
 
-### 1. Clone and Setup
-```bash
-cd blood-test-analyzer
+### 1. Set your Google Gemini API key
+
+Edit `backend/.env`:
+
+```
+GOOGLE_API_KEY=your-key-here
 ```
 
-### 2. Create Environment Files
-```bash
-# Backend .env
-cp backend/.env.example backend/.env
-# Edit backend/.env and add your OpenAI key if desired:
-# OPENAI_API_KEY=sk-your-key-here
-# SECRET_KEY=your-production-secret-key
+> **No key?** The app still works — it falls back to a built-in reference-range checker that flags abnormal values without AI commentary.
 
-# Frontend .env
-cp frontend/.env.example frontend/.env
+### 2. Start everything
+
+```bash
+docker compose up --build
 ```
 
-### 3. Start All Services
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:5173 |
+| Backend API | http://localhost:8000 |
+| API docs (Swagger) | http://localhost:8000/docs |
+| Health check | http://localhost:8000/health |
+
+### 3. Stop
+
 ```bash
-docker-compose up --build
+docker compose down          # stop containers
+docker compose down -v       # stop + delete MongoDB data
 ```
 
-### 4. Access the App
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs
-- **MongoDB**: localhost:27017
+---
 
-### 5. Stop Services
-```bash
-docker-compose down
+## How the app works
+
+### User flow
+
+1. **Sign up / Log in** — creates a JWT-authenticated session stored in `localStorage`.
+2. **Enter blood test results** — pick tests from the quick-add panel (Cholesterol, CBC, Metabolic) and type the measured values. Optionally enter age and gender.
+3. **Click Analyze** — the results are sent to the backend, which calls the Gemini API and returns:
+   - A plain-language **summary** (2–4 sentences)
+   - Per-test **details** with status (NORMAL / LOW / HIGH), reference range, and a plain note
+   - **Suggestions** (e.g. "discuss with your doctor")
+   - A concrete **shopping list** of foods relevant to your results
+   - Simple **recipes** using those ingredients
+4. **History** — every analysis is saved per user; the History tab lets you view or delete past reports.
+5. **Session persistence** — on page reload the app calls `/api/auth/me` with the stored access token. If the token has expired (30 min), the Axios interceptor silently refreshes it using the refresh token (7 days) without logging the user out.
+
+---
+
+## Architecture
+
+```
+Browser
+  └── React + Vite  (port 5173)
+        └── Axios ──► FastAPI  (port 8000)
+                        ├── /api/auth/*     JWT auth
+                        └── /api/analyze/*  analysis + history
+                              ├── Google Gemini API  (AI)
+                              └── MongoDB            (storage)
 ```
 
-## 🔧 Local Development (Without Docker)
+---
 
-### Backend Setup
+## Components
 
-#### Prerequisites
-- Python 3.11+
-- MongoDB running locally (or MongoDB Atlas connection string)
+### Backend (`backend/`)
 
-#### Installation
-```bash
-cd backend
-pip install -r requirements.txt
+| File | What it does |
+|---|---|
+| `app/main.py` | FastAPI app, MongoDB startup/shutdown, CORS |
+| `app/models.py` | Pydantic schemas for every request and response |
+| `app/routes/auth.py` | `POST /signup`, `POST /login`, `POST /refresh`, `GET /me` |
+| `app/routes/analyze.py` | `POST /analyze`, history GET/DELETE endpoints |
+| `app/services/__init__.py` | `AuthService` (JWT + bcrypt), `MongoDBService` (pymongo) |
+| `app/services/analysis_service.py` | Gemini prompt, reference-range table, fallback analysis |
+
+**Auth** — two JWTs: access token (30 min) + refresh token (7 days), signed with `SECRET_KEY` using HS256.
+
+**Analysis** — sends a structured prompt to `gemini-2.0-flash` requesting JSON output. Falls back to `fallback_analysis()` if the API key is absent or the call fails; this compares values against a built-in reference table covering ~35 common tests (CBC, lipids, metabolic, kidney, liver, thyroid, vitamins).
+
+### Frontend (`frontend/`)
+
+| File | What it does |
+|---|---|
+| `src/main.jsx` | React entry point, mounts `AuthProvider` |
+| `src/App.jsx` | Auth gate — shows Login/Signup or the main nav |
+| `src/context/AuthContext.jsx` | Global `user` state, `login` / `signup` / `logout` |
+| `src/services/api.js` | Axios instance with Bearer token injection + automatic refresh on 401 |
+| `src/pages/Home.jsx` | Test-entry form + analysis results panel |
+| `src/pages/History.jsx` | Past analyses list with delete |
+| `src/pages/Login.jsx` / `Signup.jsx` | Auth forms |
+
+Styling: **Tailwind CSS v4** via the `@tailwindcss/vite` plugin (configured in `vite.config.js`).
+
+---
+
+## Database schema
+
+**`users`** collection
+```json
+{ "_id": ObjectId, "email": "...", "full_name": "...", "password": "<bcrypt>", "created_at": Date, "updated_at": Date }
 ```
 
-#### Configuration
-```bash
-cp .env.example .env
-# Edit .env:
-MONGO_URI=mongodb://localhost:27017
-DB_NAME=blood_test_analyzer
-OPENAI_API_KEY=sk-your-key-here
-SECRET_KEY=your-secret-key
-```
-
-#### Run Backend
-```bash
-uvicorn app.main:app --reload
-# Server: http://localhost:8000
-# Docs: http://localhost:8000/docs
-```
-
-### Frontend Setup
-
-#### Prerequisites
-- Node.js 18+
-
-#### Installation
-```bash
-cd frontend
-npm install
-```
-
-#### Configuration
-```bash
-cp .env.example .env
-# Frontend .env is ready, points to http://localhost:8000
-```
-
-#### Run Frontend
-```bash
-npm run dev
-# Open: http://localhost:5173
-```
-
-## 📚 API Endpoints
-
-### Authentication
-- `POST /api/auth/signup` - Create account
-  ```json
-  {
-    "email": "user@example.com",
-    "password": "password123",
-    "full_name": "John Doe"
-  }
-  ```
-- `POST /api/auth/login` - Login
-  ```json
-  {
-    "email": "user@example.com",
-    "password": "password123"
-  }
-  ```
-- `POST /api/auth/refresh` - Refresh access token
-- `GET /api/auth/me` - Get current user (requires auth)
-
-### Analysis
-- `POST /api/analyze/analyze` - Analyze blood test (requires auth)
-  ```json
-  {
-    "results": [
-      {"name": "Hemoglobin", "value": 14.5, "unit": "g/dL"},
-      {"name": "WBC Count", "value": 7.2, "unit": "K/µL"}
-    ],
-    "patient_info": {
-      "age": 30,
-      "gender": "Male"
-    }
-  }
-  ```
-- `GET /api/analyze/history` - Get user's analysis history (requires auth)
-- `GET /api/analyze/history/{id}` - Get specific analysis (requires auth)
-- `DELETE /api/analyze/history/{id}` - Delete analysis (requires auth)
-
-## 🔑 Authentication Flow
-
-1. **Signup**: Create account → receive `access_token` + `refresh_token`
-2. **Login**: Enter credentials → receive tokens
-3. **Protected Requests**: Send `Authorization: Bearer <access_token>`
-4. **Token Refresh**: Use `refresh_token` to get new `access_token` (automatic)
-
-Tokens are stored in browser's `localStorage`.
-
-## 🗄️ Database Schema
-
-### Users Collection
+**`analyses`** collection
 ```json
 {
   "_id": ObjectId,
-  "email": "user@example.com",
-  "full_name": "John Doe",
-  "password": "bcrypt_hashed_password",
-  "created_at": ISODate,
-  "updated_at": ISODate
-}
-```
-
-### Analyses Collection
-```json
-{
-  "_id": ObjectId,
-  "user_id": "user_object_id",
+  "user_id": "<user _id>",
+  "created_at": Date,
   "analysis": {
     "summary": ["..."],
-    "details": [{"name": "...", "value": ..., "status": "normal|low|high"}],
+    "details": [{ "name": "...", "value": 0, "unit": "...", "reference_range": "...", "status": "normal|low|high", "note": "..." }],
     "suggestions": ["..."],
     "grocery_list": ["..."],
-    "recipes": [{"name": "...", "ingredients": [...], "instructions": [...]}],
+    "recipes": [{ "name": "...", "ingredients": ["..."], "instructions": ["..."] }],
     "disclaimer": "..."
-  },
-  "created_at": ISODate
+  }
 }
 ```
 
-## 🎯 Features
+---
 
-### User Authentication
-- ✅ Sign up with email/password
-- ✅ Login/Logout
-- ✅ JWT-based auth with refresh tokens
-- ✅ Auto token refresh on expiry
-- ✅ Password hashing with bcrypt
+## API reference
 
-### Blood Test Analysis
-- ✅ Input blood test values
-- ✅ Auto-detect abnormal results (low/high)
-- ✅ AI-powered analysis (GPT-4o-mini)
-- ✅ Fallback rule-based analysis (no API key needed)
-- ✅ Grocery shopping list
-- ✅ Recipe suggestions
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/api/auth/signup` | — | Register (email, password, full_name) |
+| POST | `/api/auth/login` | — | Login → access + refresh tokens |
+| POST | `/api/auth/refresh` | — | Exchange refresh token for new tokens |
+| GET | `/api/auth/me` | ✓ | Current user info |
+| POST | `/api/analyze/analyze` | ✓ | Submit results, get AI analysis |
+| GET | `/api/analyze/history` | ✓ | List all analyses (newest first) |
+| GET | `/api/analyze/history/{id}` | ✓ | Get one analysis |
+| DELETE | `/api/analyze/history/{id}` | ✓ | Delete one analysis |
+| GET | `/health` | — | MongoDB ping |
 
-### History & Persistence
-- ✅ Save analyses to MongoDB
-- ✅ View analysis history
-- ✅ Delete old analyses
-- ✅ Filter by date
+---
 
-## 🔐 Security
+## Environment variables
 
-- Passwords hashed with bcrypt
-- JWT tokens with expiry (30 min access, 7 day refresh)
-- CORS configured
-- Environment variables for secrets
-- No secrets committed to git
+### `backend/.env`
 
-## 📦 Dependencies
+| Variable | Default | Notes |
+|---|---|---|
+| `MONGO_URI` | `mongodb://mongodb:27017` | Change to Atlas URI for cloud |
+| `DB_NAME` | `blood_test_analyzer` | |
+| `SECRET_KEY` | `your-super-secret-key-...` | Change in production |
+| `GOOGLE_API_KEY` | _(empty)_ | Gemini key; blank = fallback mode |
+| `CORS_ORIGINS` | `http://localhost:5173,...` | Comma-separated allowed origins |
 
-### Backend
-- FastAPI - Web framework
-- PyMongo - MongoDB driver
-- Pydantic - Data validation
-- OpenAI - AI analysis
-- PyJWT - Token management
-- bcrypt - Password hashing
+### `frontend/.env`
 
-### Frontend
-- React 18 - UI library
-- Axios - HTTP client
-- Tailwind CSS - Styling
-- Lucide React - Icons
-- Vite - Build tool
+| Variable | Default | Notes |
+|---|---|---|
+| `VITE_API_URL` | `http://localhost:8000` | Backend base URL |
 
-## 🛠️ Customization
+---
 
-### Adding More Blood Tests
-Edit `backend/app/services/analysis_service.py`:
-```python
-REFERENCE_RANGES = {
-    "Your Test Name": {
-        "low": 0,
-        "high": 100,
-        "unit": "mg/dL",
-        "category": "Your Category"
-    },
-    # ...
-}
-```
+## Troubleshooting
 
-### Changing AI Model
-Edit `backend/app/services/analysis_service.py`:
-```python
-client.chat.completions.create(
-    model="gpt-4",  # Change here
-    # ...
-)
-```
-
-### Customizing Styles
-Edit `frontend/src/index.css` or update Tailwind classes in components.
-
-## 📝 License
-
-MIT License - Feel free to use and modify.
-
-## ⚠️ Disclaimer
-
-This tool is **for educational purposes only**. It is not a substitute for professional medical advice. Always consult a qualified healthcare provider about your lab results.
-
-## 🆘 Troubleshooting
-
-### MongoDB Connection Failed
+**Backend won't start**
 ```bash
-# Check if MongoDB is running
-docker ps | grep mongodb
+docker compose logs backend
+```
+Common causes: bad `requirements.txt` pin, import error in Python files.
 
-# Restart services
-docker-compose restart mongodb backend
+**CORS error in browser**
+Usually means the backend crashed before handling the request. Fix the backend error first — CORS errors with `Status code: (null)` mean nothing is listening on port 8000.
+
+**MongoDB not connected**
+```bash
+docker compose ps          # check all containers are Up
+docker compose restart mongodb backend
 ```
 
-### API Returns 401 Unauthorized
-- Check if `access_token` is in localStorage
-- Token may have expired - refresh with `refresh_token`
-- Try logging in again
+**Gemini not responding**
+Check `GOOGLE_API_KEY` in `backend/.env`. The app automatically falls back to rule-based analysis — you'll still get reference ranges and normal/low/high flags, just no AI commentary.
 
-### Frontend Cannot Connect to Backend
-- Ensure backend is running (`http://localhost:8000`)
-- Check `VITE_API_URL` in frontend `.env`
-- Check browser console for CORS errors
+---
 
-### OpenAI API Error
-- Verify API key is set in `backend/.env`
-- Check OpenAI account has credits
-- App falls back to rule-based analysis if API fails
+## Disclaimer
 
-## 📧 Support
-
-For issues or questions, check the API docs at `http://localhost:8000/docs`
+This tool is for **educational purposes only**. It is not a substitute for professional medical advice. Always consult a qualified healthcare provider about your lab results.
