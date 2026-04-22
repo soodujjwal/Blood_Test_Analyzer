@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 
 class UserRegister(BaseModel):
@@ -25,8 +25,8 @@ class BloodTestResult(BaseModel):
     unit: str
 
 class PatientInfo(BaseModel):
-    age: Optional[int] = None
-    gender: Optional[str] = None
+    age: int = Field(..., gt=0)
+    gender: str = Field(..., min_length=1)
     notes: Optional[str] = None
 
 class AnalysisRequest(BaseModel):
@@ -41,18 +41,11 @@ class TestDetail(BaseModel):
     status: str  # normal, low, high
     note: str
 
-class Recipe(BaseModel):
-    name: str
-    ingredients: List[str]
-    instructions: List[str]
-
 class AnalysisResponse(BaseModel):
     id: Optional[str] = None
-    summary: List[str]
     details: List[TestDetail]
     suggestions: List[str]
-    grocery_list: List[str]
-    recipes: List[Recipe]
+    grocery_list: Dict[str, List[str]]
     disclaimer: str
 
 class AnalysisHistoryItem(BaseModel):

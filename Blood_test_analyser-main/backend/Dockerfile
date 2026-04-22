@@ -4,6 +4,14 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir --upgrade pip
 
+# Install system deps required for PDF->image conversion and OCR
+RUN apt-get update && apt-get install -y --no-install-recommends \
+	tesseract-ocr \
+	poppler-utils \
+	build-essential \
+	pkg-config \
+	&& rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

@@ -27,6 +27,9 @@ async def get_current_user(request: Request, credentials: Optional[HTTPAuthoriza
 
 @router.post("/signup", response_model=TokenResponse)
 async def signup(request: UserRegister, req: Request):
+    if req.app.state.db is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not established")
+        
     db = MongoDBService(req.app.state.db)
     
     existing = db.get_user_by_email(request.email)
@@ -43,6 +46,9 @@ async def signup(request: UserRegister, req: Request):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(request: UserLogin, req: Request):
+    if req.app.state.db is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not established")
+
     db = MongoDBService(req.app.state.db)
     
     user = db.get_user_by_email(request.email)
@@ -71,6 +77,9 @@ async def refresh(request: RefreshTokenRequest):
 
 @router.get("/me", response_model=User)
 async def get_current_user_info(req: Request, user: dict = Depends(get_current_user)):
+    if req.app.state.db is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not established")
+
     db = MongoDBService(req.app.state.db)
     user_data = db.get_user_by_id(user["sub"])
     

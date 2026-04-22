@@ -4,6 +4,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 15000, // 15 seconds timeout
 });
 
 api.interceptors.request.use((config) => {
@@ -20,6 +21,11 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // Don't retry if it's already a login or refresh request
+      if (originalRequest.url.includes('/api/auth/login') || originalRequest.url.includes('/api/auth/refresh')) {
+        return Promise.reject(error);
+      }
+
       originalRequest._retry = true;
       const refreshToken = localStorage.getItem('refresh_token');
 
@@ -39,7 +45,8 @@ api.interceptors.response.use(
         } catch (err) {
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
-          window.location.reload();
+          // Don't reload, just reject so the app state can handle it
+          return Promise.reject(err);
         }
       }
     }
@@ -61,8 +68,13 @@ export const authAPI = {
 export const analyzeAPI = {
   analyze: (results, patientInfo) =>
     api.post('/api/analyze/analyze', { results, patient_info: patientInfo }),
-  analyzePDF: (formData) =>
-    api.post('/api/analyze/upload-pdf', formData, {
+  analyzeFile: (formData, age, gender) =>
+    api.post(`/api/analyze/upload?age=${age}&gender=${gender}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  // Backwards-compatible alias: some frontend code calls `analyzePDF`
+  analyzePDF: (formData, age, gender) =>
+    api.post(`/api/analyze/upload?age=${age}&gender=${gender}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   getHistory: () => api.get('/api/analyze/history'),

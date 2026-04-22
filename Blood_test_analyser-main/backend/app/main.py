@@ -20,7 +20,13 @@ db = None
 async def lifespan(app: FastAPI):
     global mongo_client, db
     try:
-        mongo_client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
+        # Add a timeout to prevent indefinite hanging on connection
+        mongo_client = MongoClient(
+            MONGO_URI, 
+            server_api=ServerApi('1'),
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000
+        )
         mongo_client.admin.command('ping')
         db = mongo_client[DB_NAME]
         app.state.db = db
@@ -28,6 +34,8 @@ async def lifespan(app: FastAPI):
         print("✓ MongoDB connected")
     except Exception as e:
         print(f"✗ MongoDB connection failed: {e}")
+        # Ensure db is at least None so routes don't crash on missing attribute
+        app.state.db = None
 
     yield
 

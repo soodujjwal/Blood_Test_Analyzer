@@ -1,8 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Sparkles, Plus, ShoppingBag, ChefHat, CheckCircle,
-  AlertTriangle, AlertCircle, Upload, FileText, X,
-  ChevronDown, ChevronUp, User, Clipboard,
+  Sparkles, Plus, ShoppingBag, CircleCheck,
+  TriangleAlert, CircleAlert, Upload, FileText, X,
+  ChevronDown, ChevronUp, User, Clipboard, Activity,
+  ArrowRight, Beaker, Zap, Heart, Info
 } from 'lucide-react';
 import { analyzeAPI, getErrorMessage } from '../services/api';
 
@@ -48,193 +50,219 @@ const TEST_CATEGORIES = {
 
 const STATUS_CONFIG = {
   normal: {
-    badge: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
-    icon: CheckCircle,
+    badge: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
+    icon: CircleCheck,
     iconColor: 'text-emerald-400',
-    card: 'bg-emerald-500/5 border-emerald-500/20',
+    card: 'bg-emerald-500/[0.02] border-emerald-500/10',
+    glow: 'shadow-[0_0_20px_rgba(16,185,129,0.05)]',
   },
   low: {
-    badge: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
-    icon: AlertTriangle,
+    badge: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
+    icon: TriangleAlert,
     iconColor: 'text-amber-400',
-    card: 'bg-amber-500/5 border-amber-500/20',
+    card: 'bg-amber-500/[0.02] border-amber-500/10',
+    glow: 'shadow-[0_0_20px_rgba(245,158,11,0.05)]',
   },
   high: {
-    badge: 'bg-rose-500/15 text-rose-400 border border-rose-500/30',
-    icon: AlertCircle,
+    badge: 'bg-rose-500/10 text-rose-400 border border-rose-500/20',
+    icon: CircleAlert,
     iconColor: 'text-rose-400',
-    card: 'bg-rose-500/5 border-rose-500/20',
+    card: 'bg-rose-500/[0.02] border-rose-500/10',
+    glow: 'shadow-[0_0_20px_rgba(244,63,94,0.05)]',
   },
 };
 
 const inputClass =
-  'w-full px-3 py-2 text-sm bg-zinc-800/60 border border-white/10 rounded-xl text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500/40 transition';
+  'w-full px-4 py-3.5 text-sm bg-white/5 border border-white/10 rounded-2xl text-white placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500/40 transition-all backdrop-blur-md shadow-inner h-[50px] leading-none';
 
 const cardClass =
-  'bg-zinc-900/70 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-2xl';
-
-function RecipeCard({ recipe }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border border-white/[0.08] rounded-xl overflow-hidden">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-white/[0.03] hover:bg-white/[0.06] transition text-left"
-      >
-        <div className="flex items-center gap-2">
-          <ChefHat className="w-4 h-4 text-fuchsia-400" />
-          <span className="font-medium text-zinc-300 text-sm">{recipe.name}</span>
-        </div>
-        {open ? <ChevronUp className="w-4 h-4 text-zinc-600" /> : <ChevronDown className="w-4 h-4 text-zinc-600" />}
-      </button>
-      {open && (
-        <div className="px-4 py-3 space-y-3 bg-black/20">
-          <div>
-            <p className="text-xs font-semibold text-zinc-600 uppercase tracking-widest mb-2">Ingredients</p>
-            <ul className="space-y-1">
-              {recipe.ingredients.map((ing, i) => (
-                <li key={i} className="text-sm text-zinc-400 flex items-start gap-2">
-                  <span className="text-violet-500 mt-0.5">•</span>{ing}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-zinc-600 uppercase tracking-widest mb-2">Instructions</p>
-            <ol className="space-y-1">
-              {recipe.instructions.map((step, i) => (
-                <li key={i} className="text-sm text-zinc-400 flex items-start gap-2">
-                  <span className="text-violet-400 font-semibold shrink-0">{i + 1}.</span>{step}
-                </li>
-              ))}
-            </ol>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+  'bg-white/[0.03] backdrop-blur-2xl border border-white/[0.08] rounded-[2rem] shadow-2xl overflow-hidden';
 
 function AnalysisResults({ analysis }) {
   const normalCount = analysis.details?.filter(d => d.status === 'normal').length || 0;
   const abnormalCount = (analysis.details?.length || 0) - normalCount;
 
   return (
-    <div className="space-y-5">
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
+    <div className="space-y-10">
+      {/* Stats Dashboard */}
+      <div className="grid grid-cols-3 gap-6">
         {[
-          { label: 'Tests', value: analysis.details?.length || 0, color: 'text-zinc-100', bg: 'bg-white/[0.04] border-white/[0.08]' },
-          { label: 'Normal', value: normalCount, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
-          { label: 'Flagged', value: abnormalCount, color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/20' },
-        ].map(({ label, value, color, bg }) => (
-          <div key={label} className={`rounded-xl border p-3 text-center ${bg}`}>
-            <div className={`text-2xl font-bold ${color}`}>{value}</div>
-            <div className="text-xs text-zinc-600 font-medium mt-0.5">{label}</div>
+          { label: 'Total Markers', value: analysis.details?.length || 0, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20', icon: Beaker, shadow: 'shadow-blue-500/10' },
+          { label: 'Optimal Level', value: normalCount, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', icon: CircleCheck, shadow: 'shadow-emerald-500/10' },
+          { label: 'Requires Attention', value: abnormalCount, color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/20', icon: TriangleAlert, shadow: 'shadow-rose-500/10' },
+        ].map(({ label, value, color, bg, icon: Icon, shadow }) => (
+          <div
+            key={label}
+            className={`relative group rounded-[2rem] border p-7 text-center ${bg} ${shadow} backdrop-blur-3xl transition-all duration-500 hover:scale-[1.03] hover:-translate-y-1 overflow-hidden flex flex-col items-center justify-center min-h-[140px]`}
+          >
+            <div className="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity duration-500">
+              <Icon size={96} />
+            </div>
+            <div className={`text-4xl font-black ${color} mb-2 drop-shadow-sm leading-none`}>{value}</div>
+            <div className="text-[10px] text-white/50 font-black uppercase tracking-[0.25em] leading-tight max-w-[100px]">{label}</div>
           </div>
         ))}
       </div>
 
-      {/* AI Summary */}
-      {analysis.summary?.length > 0 && (
-        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-4">
-          <h3 className="text-xs font-semibold text-violet-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5" /> AI Summary
+      {/* Flagged Markers (Prioritized) */}
+      {abnormalCount > 0 && (
+        <div className="space-y-6">
+          <h3 className="text-[11px] font-black text-rose-400/80 uppercase tracking-[0.3em] flex items-center gap-3 px-2 leading-none">
+            <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+            Priority Biomarkers
           </h3>
-          {analysis.summary.map((s, i) => (
-            <p key={i} className="text-sm text-zinc-300 leading-relaxed">{s}</p>
-          ))}
-        </div>
-      )}
-
-      {/* Test details */}
-      {analysis.details?.length > 0 && (
-        <div>
-          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-widest mb-3 flex items-center gap-2">
-            <Clipboard className="w-3.5 h-3.5" /> Test Results
-          </h3>
-          <div className="space-y-2">
-            {analysis.details.map((detail, i) => {
-              const cfg = STATUS_CONFIG[detail.status] || STATUS_CONFIG.normal;
+          <div className="grid grid-cols-1 gap-4">
+            {analysis.details.filter(d => d.status !== 'normal').map((detail, i) => {
+              const cfg = STATUS_CONFIG[detail.status];
               const Icon = cfg.icon;
               return (
-                <div key={i} className={`border rounded-xl p-4 ${cfg.card}`}>
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="flex items-center gap-2">
-                      <Icon className={`w-4 h-4 shrink-0 ${cfg.iconColor}`} />
-                      <span className="font-semibold text-zinc-100 text-sm">{detail.name}</span>
+                <motion.div 
+                  initial={{ x: -20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ delay: i * 0.1 }}
+                  key={i} 
+                  className={`group relative border rounded-[1.5rem] p-6 ${cfg.card} ${cfg.glow} transition-all duration-300 hover:bg-white/[0.05] hover:border-white/20`}
+                >
+                  <div className="flex items-center justify-between gap-6">
+                    <div className="flex items-center gap-5 flex-1 min-w-0">
+                      <div className={`p-4 rounded-2xl bg-black/40 ${cfg.iconColor} border border-white/10 shrink-0 shadow-inner`}>
+                        <Icon className="w-6 h-6" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="font-black text-white text-lg block leading-none truncate mb-2">{detail.name}</span>
+                        <div className="flex items-center gap-3 leading-none">
+                          <span className={`text-[10px] font-black px-2.5 py-1.5 rounded-lg uppercase tracking-wider ${cfg.badge}`}>{detail.status}</span>
+                          <span className="text-xs text-white/30 font-bold tracking-wide truncate bg-white/5 px-2 py-1 rounded-md">Reference: {detail.reference_range}</span>
+                        </div>
+                      </div>
                     </div>
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${cfg.badge}`}>
-                      {detail.status.toUpperCase()}
-                    </span>
+                    <div className="text-right shrink-0">
+                      <div className="text-2xl font-black text-white leading-none tabular-nums">
+                        {detail.value} <span className="text-sm text-white/20 font-black ml-1 uppercase">{detail.unit}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-zinc-500 mb-1.5">
-                    <span className="font-semibold text-zinc-300">{detail.value} {detail.unit}</span>
-                    <span>Ref: {detail.reference_range}</span>
-                  </div>
-                  <p className="text-xs text-zinc-500 leading-relaxed">{detail.note}</p>
-                </div>
+                  {detail.note && (
+                    <div className="mt-5 pt-5 border-t border-white/5 flex gap-4">
+                      <div className="p-1 rounded bg-white/5 h-fit"><Info className="w-3.5 h-3.5 text-white/30 shrink-0" /></div>
+                      <p className="text-sm text-white/50 leading-relaxed flex-1 font-medium italic">{detail.note}</p>
+                    </div>
+                  )}
+                </motion.div>
               );
             })}
           </div>
         </div>
       )}
 
-      {/* Suggestions */}
-      {analysis.suggestions?.length > 0 && (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4">
-          <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-            <CheckCircle className="w-3.5 h-3.5" /> Suggestions
+      {/* Normal Markers */}
+      {normalCount > 0 && (
+        <div className="space-y-5">
+          <h3 className="text-[11px] font-black text-white/20 uppercase tracking-[0.3em] flex items-center gap-3 px-2 leading-none">
+            <CircleCheck className="w-3.5 h-3.5" />
+            Optimal Results
           </h3>
-          <ul className="space-y-1.5">
-            {analysis.suggestions.map((s, i) => (
-              <li key={i} className="text-sm text-zinc-300 flex items-start gap-2">
-                <span className="text-emerald-500 shrink-0">→</span>{s}
-              </li>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {analysis.details.filter(d => d.status === 'normal').map((detail, i) => (
+              <div key={i} className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-5 flex items-center justify-between group hover:bg-white/[0.04] hover:border-white/10 transition-all duration-300 min-h-[64px]">
+                <div className="flex items-center gap-4 min-w-0 mr-4">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 group-hover:scale-125 group-hover:bg-emerald-500/40 transition-all shrink-0" />
+                  <span className="text-sm font-bold text-white/70 truncate leading-none group-hover:text-white transition-colors">{detail.name}</span>
+                </div>
+                <div className="text-sm font-black text-white/30 shrink-0 leading-none tabular-nums">
+                  {detail.value} <span className="text-[10px] font-black ml-1 text-white/10">{detail.unit}</span>
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
       )}
 
-      {/* Grocery list */}
-      {analysis.grocery_list?.length > 0 && (
-        <div>
-          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-widest mb-3 flex items-center gap-2">
-            <ShoppingBag className="w-3.5 h-3.5" /> Shopping List
-          </h3>
-          <div className="bg-white/[0.03] border border-white/[0.08] rounded-xl p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {analysis.grocery_list.map((item, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm text-zinc-400">
-                  <div className="w-4 h-4 rounded border border-white/15 shrink-0" />
-                  {item}
+      {/* Action Plan & Nutrition */}
+      <div className="grid grid-cols-1 gap-10">
+        {/* Recommendations */}
+        {analysis.suggestions?.length > 0 && (
+          <div className="relative overflow-hidden bg-emerald-500/[0.03] border border-emerald-500/20 rounded-[2.5rem] p-10">
+            <div className="absolute top-0 right-0 p-8 opacity-5">
+              <Heart size={100} className="text-emerald-400" />
+            </div>
+            <h3 className="text-[11px] font-black text-emerald-400 uppercase tracking-[0.3em] mb-8 flex items-center gap-3 leading-none relative z-10">
+              <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/20"><Heart className="w-4 h-4" /></div>
+              Clinical Health Protocol
+            </h3>
+            <div className="grid grid-cols-1 gap-4 relative z-10">
+              {analysis.suggestions.map((s, i) => (
+                <div key={i} className="text-sm text-white/80 flex items-start gap-5 bg-white/[0.03] p-5 rounded-[1.5rem] border border-white/5 transition-all hover:bg-white/[0.06] hover:translate-x-1 group">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/10 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                    <CircleCheck className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <span className="font-semibold leading-relaxed flex-1 mt-1">{s}</span>
                 </div>
               ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Recipes */}
-      {analysis.recipes?.length > 0 && (
-        <div>
-          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-widest mb-3 flex items-center gap-2">
-            <ChefHat className="w-3.5 h-3.5" /> Recipes
-          </h3>
-          <div className="space-y-2">
-            {analysis.recipes.map((recipe, i) => (
-              <RecipeCard key={i} recipe={recipe} />
-            ))}
+        {/* Grocery List */}
+        {(analysis.grocery_list?.veg?.length > 0 || analysis.grocery_list?.non_veg?.length > 0) ? (
+          <div className="space-y-8">
+            {/* Vegetarian Section */}
+            {analysis.grocery_list.veg?.length > 0 && (
+              <div className="relative overflow-hidden bg-emerald-500/[0.03] border border-emerald-500/10 rounded-[2.5rem] p-10">
+                <div className="absolute top-0 right-0 p-8 opacity-5">
+                  <ShoppingBag size={100} className="text-emerald-400" />
+                </div>
+                <h3 className="text-[11px] font-black text-emerald-400 uppercase tracking-[0.3em] mb-8 flex items-center gap-3 leading-none relative z-10">
+                  <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/20"><ShoppingBag className="w-4 h-4" /></div>
+                  Vegetarian Nutrition List
+                </h3>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
+                  {analysis.grocery_list.veg.map((item, i) => (
+                    <div key={i} className="flex items-center gap-4 text-xs text-white/70 p-5 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-emerald-500/40 hover:bg-white/[0.06] transition-all group min-h-[64px]">
+                      <div className="w-2 h-2 rounded-full bg-emerald-400/20 border border-emerald-400/40 group-hover:scale-150 group-hover:bg-emerald-400 transition-all shrink-0" />
+                      <span className="font-bold leading-tight flex-1">{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Non-Vegetarian Section */}
+            {analysis.grocery_list.non_veg?.length > 0 && (
+              <div className="relative overflow-hidden bg-rose-500/[0.03] border border-rose-500/10 rounded-[2.5rem] p-10">
+                <div className="absolute top-0 right-0 p-8 opacity-5">
+                  <ShoppingBag size={100} className="text-rose-400" />
+                </div>
+                <h3 className="text-[11px] font-black text-rose-400 uppercase tracking-[0.3em] mb-8 flex items-center gap-3 leading-none relative z-10">
+                  <div className="p-2 rounded-xl bg-rose-500/20 border border-rose-500/20"><ShoppingBag className="w-4 h-4" /></div>
+                  Non-Vegetarian Nutrition List
+                </h3>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
+                  {analysis.grocery_list.non_veg.map((item, i) => (
+                    <div key={i} className="flex items-center gap-4 text-xs text-white/70 p-5 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-rose-500/40 hover:bg-white/[0.06] transition-all group min-h-[64px]">
+                      <div className="w-2 h-2 rounded-full bg-rose-400/20 border border-rose-400/40 group-hover:scale-150 group-hover:bg-rose-400 transition-all shrink-0" />
+                      <span className="font-bold leading-tight flex-1">{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="p-10 border border-dashed border-white/10 rounded-[2.5rem] text-center">
+            <p className="text-xs text-white/30 font-bold uppercase tracking-widest">Compiling Nutritional Recommendations...</p>
+          </div>
+        )}
+      </div>
 
-      {/* Disclaimer */}
-      {analysis.disclaimer && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-500/80 leading-relaxed">
-          ⚠ {analysis.disclaimer}
+      <div className="pt-12 border-t border-white/5">
+        <div className="max-w-2xl mx-auto px-6 py-4 rounded-2xl bg-white/[0.01] border border-white/5">
+          <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest text-center mb-2">Disclaimer</p>
+          <p className="text-[10px] text-white/20 italic text-center leading-relaxed">
+            {analysis.disclaimer}
+          </p>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -244,16 +272,27 @@ export default function Home() {
   const [results, setResults] = useState([]);
   const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
-  const [pdfFile, setPdfFile] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
 
-  const addResult = (testName, unit) => {
-    if (results.some(r => r.name === testName)) return;
-    setResults([...results, { name: testName, unit, value: '' }]);
+  useEffect(() => {
+    if (analysis) {
+      console.log("Analysis Data Received:", analysis);
+    }
+  }, [analysis]);
+
+  const addAllTestsInCategory = (tests) => {
+    const newResults = [...results];
+    tests.forEach(test => {
+      if (!newResults.some(r => r.name === test.name)) {
+        newResults.push({ name: test.name, unit: test.unit, value: '' });
+      }
+    });
+    setResults(newResults);
   };
 
   const updateResult = (index, value) => {
@@ -263,13 +302,15 @@ export default function Home() {
   };
 
   const removeResult = (index) => setResults(results.filter((_, i) => i !== index));
+  const clearResults = () => setResults([]);
 
   const handleFileChange = (file) => {
-    if (file && file.type === 'application/pdf') {
-      setPdfFile(file);
+    const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
+    if (file && allowedTypes.includes(file.type)) {
+      setSelectedFile(file);
       setError(null);
     } else if (file) {
-      setError('Please upload a PDF file.');
+      setError('Please upload a valid PDF or Image file (PNG, JPG).');
     }
   };
 
@@ -280,21 +321,29 @@ export default function Home() {
   };
 
   const handleAnalyzeManual = async () => {
+    if (!age || !gender) {
+      setError('Please enter both age and gender.');
+      return;
+    }
+
+    if (parseInt(age) <= 0) {
+      setError('Please enter a valid age greater than 0.');
+      return;
+    }
+
     const resultsData = results
       .filter(r => r.value !== '' && r.value !== null)
       .map(r => ({ name: r.name, value: parseFloat(r.value), unit: r.unit }));
 
     if (resultsData.length === 0) {
-      setError('Please enter at least one test value before analyzing.');
+      setError('Please add at least one test value to analyze.');
       return;
     }
 
     try {
       setLoading(true);
       setError(null);
-      const patientInfo = age || gender
-        ? { age: age ? parseInt(age) : undefined, gender: gender || undefined }
-        : null;
+      const patientInfo = { age: parseInt(age), gender: gender };
       const response = await analyzeAPI.analyze(resultsData, patientInfo);
       setAnalysis(response.data);
     } catch (err) {
@@ -304,285 +353,359 @@ export default function Home() {
     }
   };
 
-  const handleAnalyzePDF = async () => {
-    if (!pdfFile) {
-      setError('Please select a PDF file first.');
+  const handleAnalyzeFile = async () => {
+    if (!selectedFile) {
+      setError('No file selected.');
+      return;
+    }
+    if (!age || !gender) {
+      setError('Please enter both age and gender.');
+      return;
+    }
+    if (parseInt(age) <= 0) {
+      setError('Please enter a valid age greater than 0.');
       return;
     }
     try {
       setLoading(true);
       setError(null);
       const formData = new FormData();
-      formData.append('file', pdfFile);
-      const response = await analyzeAPI.analyzePDF(formData);
+      formData.append('file', selectedFile);
+      const response = await analyzeAPI.analyzeFile(formData, parseInt(age), gender);
       setAnalysis(response.data);
     } catch (err) {
-      setError(getErrorMessage(err, 'PDF analysis failed. Please try again.'));
+      setError(getErrorMessage(err, 'Analysis failed. Check file format.'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* ── Input panel ── */}
-      <div className="space-y-4">
-        {/* Mode tabs */}
-        <div className={`${cardClass} p-1 flex gap-1`}>
-          {[
-            { id: 'manual', label: 'Manual Entry', Icon: Clipboard },
-            { id: 'pdf', label: 'Upload PDF', Icon: FileText },
-          ].map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              onClick={() => { setMode(id); setError(null); }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                mode === id
-                  ? 'bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-500/20'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {label}
-            </button>
-          ))}
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="max-w-[1600px] mx-auto space-y-12 pb-20 px-4 sm:px-10"
+    >
+      {/* ── Enhanced Hero Section ── */}
+      <section className="relative group w-full">
+        <div className="absolute -inset-1 bg-gradient-to-r from-violet-600/20 via-fuchsia-600/20 to-pink-600/20 rounded-[2.5rem] blur-2xl opacity-50 group-hover:opacity-100 transition duration-1000"></div>
+        <div className={`${cardClass} relative px-8 py-14 sm:px-20 sm:py-20 text-center border-white/[0.12]`}>
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 mb-8"
+          >
+            <Sparkles className="w-4 h-4 text-violet-400" />
+            <span className="text-[11px] font-black text-violet-300 uppercase tracking-[0.2em] leading-none">Next-Gen Biomarker Analysis</span>
+          </motion.div>
+          <h1 className="text-2xl sm:text-[22px] font-black text-white mb-6 tracking-tight leading-tight">
+            Understand Your <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400 bg-clip-text text-transparent">Bloodwork</span> Like Never Before
+          </h1>
+          <p className="text-base sm:text-lg text-white/40 mb-12 max-w-none mx-auto leading-relaxed font-medium whitespace-nowrap">
+            AI-powered clinical interpretations, personalized nutrition plans, and biomarker tracking in one unified experience.
+          </p>
+          
+          <div className="flex flex-wrap justify-center gap-4">
+            {Object.entries(TEST_CATEGORIES).map(([category, tests], i) => (
+              <motion.button
+                key={category}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+                onClick={() => addAllTestsInCategory(tests)}
+                whileHover={{ scale: 1.05, y: -2 }}
+                whileTap={{ scale: 0.98 }}
+                className="px-6 py-4 rounded-2xl bg-white/5 border border-white/10 text-sm font-bold text-white/80 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all flex items-center gap-3 backdrop-blur-md shadow-xl h-[54px] min-w-[140px] justify-center"
+              >
+                <span className="leading-none">{category}</span>
+                <span className="text-[10px] bg-violet-500/20 text-violet-300 px-2.5 py-1 rounded-lg font-black border border-violet-500/20 leading-none">{tests.length}</span>
+              </motion.button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
+        {/* ── Unified Input Column (LHS) ── */}
+        <div className="lg:col-span-5 space-y-8 flex flex-col min-h-[800px]">
+          <div className={`${cardClass} p-2 flex gap-2 border-white/[0.08]`}>
+            {['manual', 'pdf'].map((id) => (
+              <button
+                key={id}
+                onClick={() => { setMode(id); setError(null); }}
+                className={`flex-1 flex items-center justify-center gap-3 py-4 rounded-2xl text-sm font-black transition-all duration-300 h-[56px] leading-none ${
+                  mode === id 
+                  ? 'bg-gradient-to-br from-violet-600 via-fuchsia-600 to-pink-600 text-white shadow-[0_10px_20px_rgba(139,92,246,0.3)] scale-[1.02]' 
+                  : 'text-white/40 hover:text-white/70 hover:bg-white/5'
+                }`}
+              >
+                {id === 'manual' ? <Clipboard className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
+                {id === 'manual' ? 'Smart Entry' : 'Fast Upload'}
+              </button>
+            ))}
+          </div>
+
+          <AnimatePresence mode="wait">
+            {mode === 'manual' ? (
+              <motion.div 
+                key="manual-form"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className={`${cardClass} p-8 sm:p-12 space-y-10 border-white/[0.08] flex-1 flex flex-col`}
+              >
+                <div className="space-y-5">
+                  <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] flex items-center gap-2 leading-none"><User className="w-4 h-4 text-violet-400" /> Patient Profile</p>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="relative group">
+                      <input type="number" min="1" value={age} onChange={e => setAge(e.target.value)} placeholder="Age" className={inputClass} />
+                    </div>
+                    <div className="relative group">
+                      <select value={gender} onChange={e => setGender(e.target.value)} className={`${inputClass} appearance-none cursor-pointer pr-10`}>
+                        <option value="" className="bg-slate-900">Gender</option>
+                        <option value="Male" className="bg-slate-900">Male</option>
+                        <option value="Female" className="bg-slate-900">Female</option>
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-6 flex-1 flex flex-col">
+                  <div className="flex justify-between items-center px-1 leading-none">
+                    <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] flex items-center gap-2"><Beaker className="w-4 h-4 text-fuchsia-400" /> Biomarkers</p>
+                    {results.length > 0 && (
+                      <button onClick={clearResults} className="text-[10px] text-rose-400 hover:text-rose-300 font-black uppercase tracking-widest transition-colors flex items-center gap-1 leading-none">
+                        <X className="w-3 h-3" /> Clear All
+                      </button>
+                    )}
+                  </div>
+                  
+                  {results.length === 0 ? (
+                    <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-[2rem] bg-white/[0.01] group hover:bg-white/[0.03] transition-all cursor-default flex-1 flex flex-col items-center justify-center">
+                      <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                        <Plus className="w-6 h-6 text-white/20" />
+                      </div>
+                      <p className="text-sm font-bold text-white/20 max-w-[180px] mx-auto leading-relaxed">Select a panel from the hero section to start adding data</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar flex-1">
+                      {results.map((result, index) => (
+                        <motion.div 
+                          layout
+                          initial={{ scale: 0.95, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          key={result.name} 
+                          className="group relative bg-white/5 p-5 rounded-2xl border border-white/10 hover:border-white/20 hover:bg-white/[0.08] transition-all"
+                        >
+                          <div className="flex justify-between items-center mb-3 px-1 leading-none">
+                            <span className="text-xs font-black text-white/80 truncate flex-1 mr-2">{result.name}</span>
+                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-tighter bg-white/5 px-2 py-0.5 rounded-md shrink-0">{result.unit}</span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <div className="relative flex-1">
+                              <input 
+                                type="number" 
+                                value={result.value} 
+                                onChange={e => updateResult(index, e.target.value)} 
+                                placeholder="0.00" 
+                                className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-2.5 text-sm font-black text-violet-300 placeholder-white/10 focus:outline-none focus:ring-2 focus:ring-violet-500/30 transition-all h-[44px]" 
+                              />
+                            </div>
+                            <button 
+                              onClick={() => removeResult(index)} 
+                              className="w-11 h-11 rounded-xl flex items-center justify-center text-white/10 hover:text-rose-400 hover:bg-rose-500/10 transition-all shrink-0 border border-transparent hover:border-rose-500/20"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {error && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-5 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex gap-3 items-start"
+                  >
+                    <CircleAlert className="w-5 h-5 text-rose-400 shrink-0" />
+                    <p className="text-xs text-rose-300 font-medium leading-relaxed flex-1">{error}</p>
+                  </motion.div>
+                )}
+
+                <button 
+                  onClick={handleAnalyzeManual} 
+                  disabled={loading || results.length === 0} 
+                  className="group relative w-full py-5 bg-gradient-to-br from-violet-600 via-fuchsia-600 to-pink-600 text-white font-black rounded-2xl disabled:opacity-20 transition-all overflow-hidden shadow-[0_15px_30px_rgba(139,92,246,0.3)] hover:shadow-[0_20px_40px_rgba(139,92,246,0.4)] hover:-translate-y-1 active:translate-y-0 h-[64px]"
+                >
+                  <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
+                  <span className="relative flex items-center justify-center gap-3 text-base leading-none">
+                    {loading ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                        Analyzing Intelligence...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-5 h-5" />
+                        Generate Clinical Report
+                      </>
+                    )}
+                  </span>
+                </button>
+              </motion.div>
+            ) : (
+              <motion.div 
+                key="pdf-form"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className={`${cardClass} p-10 space-y-8 text-center border-white/[0.08] flex-1 flex flex-col`}
+              >
+                <div className="space-y-5 text-left">
+                  <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] flex items-center gap-2 leading-none"><User className="w-4 h-4 text-violet-400" /> Patient Profile</p>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="relative group">
+                      <input type="number" min="1" value={age} onChange={e => setAge(e.target.value)} placeholder="Age" className={inputClass} />
+                    </div>
+                    <div className="relative group">
+                      <select value={gender} onChange={e => setGender(e.target.value)} className={`${inputClass} appearance-none cursor-pointer pr-10`}>
+                        <option value="" className="bg-slate-900">Gender</option>
+                        <option value="Male" className="bg-slate-900">Male</option>
+                        <option value="Female" className="bg-slate-900">Female</option>
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`group relative border-2 border-dashed rounded-[2.5rem] p-16 transition-all duration-500 cursor-pointer overflow-hidden flex-1 flex flex-col items-center justify-center ${
+                    dragOver ? 'border-violet-500 bg-violet-500/10 scale-[0.98]' : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/20'
+                  }`}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-violet-600/5 to-fuchsia-600/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <input ref={fileInputRef} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden" onChange={e => handleFileChange(e.target.files[0])} />
+                  
+                  <div className="relative z-10">
+                    <div className="w-20 h-20 rounded-3xl bg-white/5 flex items-center justify-center mx-auto mb-6 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500 shadow-xl border border-white/10">
+                      {selectedFile ? (selectedFile.type.startsWith('image/') ? <Activity className="w-10 h-10 text-violet-400" /> : <FileText className="w-10 h-10 text-violet-400" />) : <Upload className="w-10 h-10 text-white/20" />}
+                    </div>
+                    <h3 className="text-lg font-black text-white mb-2 leading-none">{selectedFile ? selectedFile.name : 'Report Image or PDF'}</h3>
+                    <p className="text-sm font-bold text-white/30 max-w-[200px] mx-auto leading-relaxed">
+                      {selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB • Ready to process` : 'Drag and drop your report or click to browse'}
+                    </p>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={handleAnalyzeFile} 
+                  disabled={loading || !selectedFile} 
+                  className="group relative w-full py-5 bg-gradient-to-br from-violet-600 via-fuchsia-600 to-pink-600 text-white font-black rounded-2xl disabled:opacity-20 transition-all overflow-hidden shadow-[0_15px_30px_rgba(139,92,246,0.3)] h-[64px]"
+                >
+                  <span className="relative flex items-center justify-center gap-3 leading-none">
+                    {loading ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                        Analyzing Document...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-5 h-5" />
+                        Start AI Analysis
+                      </>
+                    )}
+                  </span>
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {mode === 'manual' ? (
-          <div className={`${cardClass} p-5 space-y-5`}>
-            {/* Patient info */}
-            <div>
-              <p className="text-xs font-semibold text-zinc-600 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <User className="w-3 h-3" /> Patient Info (optional)
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  type="number"
-                  placeholder="Age"
-                  value={age}
-                  onChange={(e) => setAge(e.target.value)}
-                  className={inputClass}
-                />
-                <select
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value)}
-                  className={inputClass + ' bg-zinc-800/60'}
-                >
-                  <option value="" className="bg-zinc-900">Sex</option>
-                  <option value="Male" className="bg-zinc-900">Male</option>
-                  <option value="Female" className="bg-zinc-900">Female</option>
-                  <option value="Other" className="bg-zinc-900">Other</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Quick add */}
-            <div>
-              <p className="text-xs font-semibold text-zinc-600 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <Plus className="w-3 h-3" /> Quick Add
-              </p>
-              <div className="space-y-3">
-                {Object.entries(TEST_CATEGORIES).map(([category, tests]) => (
-                  <div key={category}>
-                    <p className="text-xs font-medium text-zinc-600 mb-2">{category}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {tests.map((test) => {
-                        const added = results.some(r => r.name === test.name);
-                        return (
-                          <button
-                            key={test.name}
-                            onClick={() => addResult(test.name, test.unit)}
-                            disabled={added}
-                            className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border transition-all ${
-                              added
-                                ? 'bg-violet-500/15 border-violet-500/30 text-violet-400 cursor-not-allowed'
-                                : 'bg-zinc-800/60 border-white/10 text-zinc-400 hover:border-violet-500/40 hover:text-violet-300'
-                            }`}
-                          >
-                            {added ? '✓' : <Plus className="w-3 h-3" />}
-                            {test.name}
-                          </button>
-                        );
-                      })}
-                    </div>
+        {/* ── Dynamic Results Column (RHS) ── */}
+        <div className="lg:col-span-7 flex flex-col min-h-[800px]">
+          <AnimatePresence mode="wait">
+            {loading ? (
+              <motion.div 
+                key="loading-state"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className={`${cardClass} p-20 flex flex-col items-center justify-center gap-8 flex-1 relative overflow-hidden min-h-[800px]`}
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-violet-600/5 to-transparent animate-pulse" />
+                <div className="relative">
+                  <div className="w-32 h-32 border-[3px] border-white/5 border-t-violet-500 rounded-full animate-spin" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-20 h-20 border-[3px] border-white/5 border-b-fuchsia-500 rounded-full animate-[spin_1.5s_linear_infinite_reverse]" />
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Added tests */}
-            {results.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-zinc-600 uppercase tracking-widest mb-3">
-                  Added Tests ({results.length})
-                </p>
-                <div className="space-y-2">
-                  {results.map((result, index) => (
-                    <div key={index} className="flex items-center gap-2 bg-white/[0.03] rounded-xl p-3 border border-white/[0.06]">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-zinc-500 mb-1.5">
-                          {result.name} <span className="text-zinc-700">({result.unit})</span>
-                        </p>
-                        <input
-                          type="number"
-                          placeholder="Enter value"
-                          value={result.value}
-                          onChange={(e) => updateResult(index, e.target.value)}
-                          className={inputClass}
-                        />
-                      </div>
-                      <button
-                        onClick={() => removeResult(index)}
-                        className="p-1.5 text-zinc-700 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all shrink-0"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                  <Sparkles className="absolute -top-2 -right-2 w-8 h-8 text-violet-400 animate-bounce" />
                 </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs">
-                {error}
-              </div>
-            )}
-
-            <button
-              onClick={handleAnalyzeManual}
-              disabled={loading || results.filter(r => r.value).length === 0}
-              className="w-full py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 text-white font-semibold text-sm rounded-full shadow-lg shadow-violet-500/25 disabled:opacity-40 transition flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Sparkles className="w-4 h-4" />
-              )}
-              {loading ? 'Analyzing…' : 'Analyze Results'}
-            </button>
-          </div>
-        ) : (
-          <div className={`${cardClass} p-5 space-y-5`}>
-            <div>
-              <h3 className="text-sm font-semibold text-zinc-200 mb-1">Upload Blood Test PDF</h3>
-              <p className="text-xs text-zinc-500">
-                Upload a text-based PDF — AI will extract and analyze all values automatically.
-              </p>
-            </div>
-
-            {/* Drop zone */}
-            <div
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`relative border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all ${
-                dragOver
-                  ? 'border-violet-500/60 bg-violet-500/10'
-                  : pdfFile
-                  ? 'border-emerald-500/40 bg-emerald-500/5'
-                  : 'border-white/10 hover:border-violet-500/30 hover:bg-white/[0.02]'
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/pdf"
-                className="hidden"
-                onChange={(e) => handleFileChange(e.target.files[0])}
-              />
-              {pdfFile ? (
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-12 h-12 bg-emerald-500/15 border border-emerald-500/30 rounded-xl flex items-center justify-center">
-                    <FileText className="w-6 h-6 text-emerald-400" />
+                <div className="text-center space-y-3 relative z-10">
+                  <h3 className="text-2xl font-black text-white tracking-tight leading-none">Synthesizing Bio-Data</h3>
+                  <p className="text-sm text-white/30 font-bold max-w-xs mx-auto leading-relaxed">Gemini is correlating your markers with clinical literature to provide personalized insights...</p>
+                </div>
+              </motion.div>
+            ) : analysis ? (
+              <motion.div 
+                key="results-state"
+                initial={{ opacity: 0, y: 20 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                className={`${cardClass} p-8 sm:p-12 border-white/[0.12] shadow-violet-500/5 flex-1`}
+              >
+                <div className="flex justify-between items-center mb-10 pb-6 border-b border-white/5 leading-none">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-lg shadow-violet-500/20 shrink-0">
+                      <Activity className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="font-black text-white text-xl tracking-tight leading-none">Clinical Analysis Report</h2>
+                      <p className="text-[10px] text-white/30 font-black uppercase tracking-[0.2em] mt-2.5 leading-none">Report ID: {Math.random().toString(36).substr(2, 9).toUpperCase()}</p>
+                    </div>
                   </div>
-                  <p className="font-medium text-sm text-zinc-200">{pdfFile.name}</p>
-                  <p className="text-xs text-zinc-600">{(pdfFile.size / 1024).toFixed(1)} KB</p>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setPdfFile(null); }}
-                    className="mt-1 text-xs text-rose-400 hover:underline flex items-center gap-1"
+                  <button 
+                    onClick={() => setAnalysis(null)} 
+                    className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/20 hover:text-rose-400 hover:bg-rose-500/10 transition-all shrink-0"
                   >
-                    <X className="w-3 h-3" /> Remove
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
-              ) : (
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-12 h-12 bg-white/[0.04] border border-white/10 rounded-xl flex items-center justify-center">
-                    <Upload className="w-6 h-6 text-zinc-500" />
-                  </div>
-                  <p className="font-medium text-sm text-zinc-400">
-                    {dragOver ? 'Drop it here ✦' : 'Click or drag PDF here'}
-                  </p>
-                  <p className="text-xs text-zinc-600">PDF files only · Text-based reports work best</p>
-                </div>
-              )}
-            </div>
-
-            {error && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs">
-                {error}
-              </div>
-            )}
-
-            <button
-              onClick={handleAnalyzePDF}
-              disabled={loading || !pdfFile}
-              className="w-full py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 text-white font-semibold text-sm rounded-full shadow-lg shadow-violet-500/25 disabled:opacity-40 transition flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Sparkles className="w-4 h-4" />
-              )}
-              {loading ? 'Analyzing PDF…' : 'Analyze PDF Report'}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ── Results panel ── */}
-      <div>
-        {loading ? (
-          <div className={`${cardClass} p-12 flex flex-col items-center justify-center gap-5 min-h-[300px]`}>
-            <div className="relative">
-              <div className="w-14 h-14 rounded-full border-[3px] border-violet-800 border-t-violet-400 animate-spin" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-violet-400" />
-              </div>
-            </div>
-            <div className="text-center">
-              <p className="font-semibold text-zinc-200">Analyzing your results…</p>
-              <p className="text-sm text-zinc-600 mt-1">This may take a few seconds</p>
-            </div>
-          </div>
-        ) : analysis ? (
-          <div className={`${cardClass} p-5`}>
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="font-bold text-zinc-100">Analysis Report</h2>
-              <button
-                onClick={() => setAnalysis(null)}
-                className="text-xs text-zinc-600 hover:text-zinc-400 flex items-center gap-1 transition"
+                <AnalysisResults analysis={analysis} />
+              </motion.div>
+            ) : (
+              <motion.div 
+                key="empty-state"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className={`${cardClass} p-20 flex flex-col items-center justify-center gap-8 flex-1 border-dashed border-white/[0.06] bg-transparent backdrop-blur-none min-h-[800px]`}
               >
-                <X className="w-3.5 h-3.5" /> Clear
-              </button>
-            </div>
-            <AnalysisResults analysis={analysis} />
-          </div>
-        ) : (
-          <div className={`${cardClass} p-12 flex flex-col items-center justify-center gap-4 text-center min-h-[300px]`}>
-            <div className="w-16 h-16 bg-gradient-to-br from-violet-500/15 to-fuchsia-500/15 border border-violet-500/20 rounded-2xl flex items-center justify-center">
-              <Sparkles className="w-7 h-7 text-violet-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-zinc-300">No analysis yet</p>
-              <p className="text-sm text-zinc-600 mt-1">
-                Add test values or upload a PDF to get started
-              </p>
-            </div>
-          </div>
-        )}
+                <div className="relative">
+                  <div className="absolute inset-0 bg-violet-500/20 blur-3xl rounded-full" />
+                  <div className="w-24 h-24 rounded-[2rem] bg-white/[0.03] border border-white/[0.06] flex items-center justify-center relative z-10">
+                    <Activity className="w-10 h-10 text-white/10" />
+                  </div>
+                  <Plus className="absolute -bottom-2 -right-2 w-8 h-8 text-white/5" />
+                </div>
+                <div className="text-center space-y-3 relative z-10">
+                  <h3 className="text-lg font-black text-white/40 tracking-tight leading-none">No Data Analyzed</h3>
+                  <p className="text-sm text-white/20 font-bold max-w-[240px] mx-auto leading-relaxed">Your personalized health report will appear here once you process your bloodwork.</p>
+                </div>
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.02] border border-white/[0.05] relative z-10">
+                  <Sparkles className="w-3.5 h-3.5 text-violet-400/30" />
+                  <span className="text-[10px] font-black text-white/20 uppercase tracking-widest leading-none">Awaiting Input Signal</span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

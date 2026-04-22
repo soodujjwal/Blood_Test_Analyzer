@@ -1,232 +1,277 @@
-import asyncio
+import os
+import re
 import json
 import logging
-import os
-from typing import List, Dict
-
+from typing import Dict, Any, List, Optional, Union
 from google import genai
+from google.genai import types
+from .nutrition_logic import get_targeted_groceries
 
 logger = logging.getLogger(__name__)
 
+# Minimal reference ranges for fallback analysis
 REFERENCE_RANGES = {
-    "Hemoglobin (Hb)": {"low": 12, "high": 17.5, "unit": "g/dL", "category": "CBC"},
-    "Hemoglobin": {"low": 12, "high": 17.5, "unit": "g/dL", "category": "CBC"},
-    "Hematocrit (Hct)": {"low": 36, "high": 53, "unit": "%", "category": "CBC"},
-    "Hematocrit": {"low": 36, "high": 53, "unit": "%", "category": "CBC"},
-    "WBC (White Blood Cells)": {"low": 4, "high": 11, "unit": "×10³/µL", "category": "CBC"},
-    "WBC Count": {"low": 4.5, "high": 11, "unit": "K/µL", "category": "CBC"},
-    "RBC (Red Blood Cells)": {"low": 4.2, "high": 5.9, "unit": "×10⁶/µL", "category": "CBC"},
-    "RBC Count": {"low": 4.5, "high": 5.9, "unit": "M/µL", "category": "CBC"},
-    "Platelets": {"low": 150, "high": 400, "unit": "×10³/µL", "category": "CBC"},
-    "MCV": {"low": 80, "high": 100, "unit": "fL", "category": "CBC"},
-    "MCH": {"low": 27, "high": 33, "unit": "pg", "category": "CBC"},
-    "MCHC": {"low": 32, "high": 36, "unit": "g/dL", "category": "CBC"},
-    "Glucose": {"low": 70, "high": 100, "unit": "mg/dL", "category": "Metabolic"},
-    "Fasting Glucose": {"low": 70, "high": 100, "unit": "mg/dL", "category": "Metabolic"},
-    "Postprandial Glucose": {"low": 0, "high": 140, "unit": "mg/dL", "category": "Metabolic"},
-    "Creatinine": {"low": 0.6, "high": 1.2, "unit": "mg/dL", "category": "Kidney"},
-    "BUN (Blood Urea Nitrogen)": {"low": 7, "high": 18, "unit": "mg/dL", "category": "Kidney"},
-    "Blood Urea Nitrogen": {"low": 7, "high": 20, "unit": "mg/dL", "category": "Kidney"},
-    "Sodium": {"low": 136, "high": 146, "unit": "mEq/L", "category": "Electrolytes"},
-    "Potassium": {"low": 3.5, "high": 5.0, "unit": "mEq/L", "category": "Electrolytes"},
-    "Chloride": {"low": 95, "high": 105, "unit": "mEq/L", "category": "Electrolytes"},
-    "Bicarbonate (HCO3)": {"low": 22, "high": 28, "unit": "mEq/L", "category": "Electrolytes"},
-    "Total Cholesterol": {"low": 0, "high": 200, "unit": "mg/dL", "category": "Lipids"},
-    "HDL Cholesterol": {"low": 40, "high": 60, "unit": "mg/dL", "category": "Lipids"},
-    "LDL Cholesterol": {"low": 0, "high": 160, "unit": "mg/dL", "category": "Lipids"},
-    "Triglycerides": {"low": 0, "high": 150, "unit": "mg/dL", "category": "Lipids"},
-    "ALT (SGPT)": {"low": 7, "high": 56, "unit": "U/L", "category": "Liver"},
-    "ALT": {"low": 7, "high": 56, "unit": "U/L", "category": "Liver"},
-    "AST (SGOT)": {"low": 10, "high": 40, "unit": "U/L", "category": "Liver"},
-    "AST": {"low": 10, "high": 40, "unit": "U/L", "category": "Liver"},
-    "Alkaline Phosphatase": {"low": 44, "high": 147, "unit": "U/L", "category": "Liver"},
-    "Total Bilirubin": {"low": 0.1, "high": 1.2, "unit": "mg/dL", "category": "Liver"},
-    "Albumin": {"low": 3.5, "high": 5.5, "unit": "g/dL", "category": "Liver"},
-    "Calcium": {"low": 8.4, "high": 10.2, "unit": "mg/dL", "category": "Metabolic"},
-    "TSH (Thyroid)": {"low": 0.4, "high": 4.0, "unit": "mIU/L", "category": "Thyroid"},
-    "TSH": {"low": 0.4, "high": 4.0, "unit": "mIU/L", "category": "Thyroid"},
-    "HbA1c": {"low": 4, "high": 5.6, "unit": "%", "category": "Diabetes"},
-    "Vitamin D (25-OH)": {"low": 30, "high": 100, "unit": "ng/mL", "category": "Vitamins"},
-    "Vitamin D": {"low": 30, "high": 100, "unit": "ng/mL", "category": "Vitamins"},
-    "Vitamin B12": {"low": 200, "high": 900, "unit": "pg/mL", "category": "Vitamins"},
-    "Ferritin": {"low": 30, "high": 400, "unit": "ng/mL", "category": "Iron"},
-    "VLDL Cholesterol": {"low": 5, "high": 40, "unit": "mg/dL", "category": "Lipids"},
-    "Magnesium": {"low": 1.7, "high": 2.2, "unit": "mg/dL", "category": "Electrolytes"},
-    "Uric Acid": {"low": 3.5, "high": 7.2, "unit": "mg/dL", "category": "Kidney"},
+    "hemoglobin": {"low": 13.8, "high": 17.2, "unit": "g/dL"},
+    "wbc": {"low": 4.5, "high": 11.0, "unit": "10^3/uL"},
+    "platelets": {"low": 150, "high": 450, "unit": "10^3/uL"},
+    "rbc": {"low": 4.2, "high": 5.9, "unit": "10^6/uL"},
+    "creatinine": {"low": 0.74, "high": 1.35, "unit": "mg/dL"},
+    "glucose": {"low": 70, "high": 99, "unit": "mg/dL"},
+    "cholesterol": {"low": 0, "high": 200, "unit": "mg/dL"},
+    "ldl": {"low": 0, "high": 100, "unit": "mg/dL"},
+    "hdl": {"low": 40, "high": 60, "unit": "mg/dL"},
+    "triglycerides": {"low": 0, "high": 150, "unit": "mg/dL"},
+    "vitamind": {"low": 30, "high": 100, "unit": "ng/mL"},
+    "vitaminb12": {"low": 200, "high": 900, "unit": "pg/mL"},
+    "tsh": {"low": 0.4, "high": 4.0, "unit": "mIU/L"},
+    "ferritin": {"low": 15, "high": 150, "unit": "ng/mL"},
+    "calcium": {"low": 8.5, "high": 10.2, "unit": "mg/dL"},
+    "sodium": {"low": 135, "high": 145, "unit": "mEq/L"},
+    "potassium": {"low": 3.6, "high": 5.2, "unit": "mEq/L"},
+    "hba1c": {"low": 4.0, "high": 5.6, "unit": "%"},
+    "alt": {"low": 7, "high": 55, "unit": "U/L"},
+    "ast": {"low": 8, "high": 48, "unit": "U/L"},
+    "albumin": {"low": 3.4, "high": 5.4, "unit": "g/dL"},
+    "totalbilirubin": {"low": 0.1, "high": 1.2, "unit": "mg/dL"},
+    "bun": {"low": 7, "high": 20, "unit": "mg/dL"},
+    "uricacid": {"low": 2.4, "high": 7.0, "unit": "mg/dL"},
+    "magnesium": {"low": 1.7, "high": 2.2, "unit": "mg/dL"},
+    "iron": {"low": 60, "high": 170, "unit": "mcg/dL"},
+    "crp": {"low": 0, "high": 1.0, "unit": "mg/dL"},
+    "zinc": {"low": 70, "high": 120, "unit": "mcg/dL"},
+    "vitamina": {"low": 20, "high": 60, "unit": "mcg/dL"},
+    "vitaminc": {"low": 0.4, "high": 2.0, "unit": "mg/dL"},
+    "vitamine": {"low": 5.5, "high": 17.0, "unit": "mcg/mL"},
+    "testosterone": {"low": 15, "high": 1000, "unit": "ng/dL"},
+    "estradiol": {"low": 15, "high": 350, "unit": "pg/mL"},
+    "cortisol": {"low": 5, "high": 23, "unit": "mcg/dL"},
+    "vitamink": {"low": 0.1, "high": 2.2, "unit": "ng/mL"},
+    "folate": {"low": 3, "high": 20, "unit": "ng/mL"},
+    "phosphorus": {"low": 2.5, "high": 4.5, "unit": "mg/dL"},
+    "chloride": {"low": 96, "high": 106, "unit": "mEq/L"},
+    "bicarbonate": {"low": 23, "high": 29, "unit": "mEq/L"},
+    "gfr": {"low": 60, "high": 200, "unit": "mL/min/1.73m2"},
 }
 
-def get_reference(name: str):
-    k = next((key for key in REFERENCE_RANGES.keys() 
-              if key.lower() in name.lower() or name.lower() in key.lower()), None)
-    return REFERENCE_RANGES[k] if k else None
+# small helper to normalize keys
+def _normalize(name: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", name.lower())
 
-def fallback_analysis(results: List[Dict], patient_info: Dict = None):
-    summary = []
-    details = []
-    abnormal_count = 0
+# build a normalized map for quick lookup
+NORMALIZED_REF_MAP = { _normalize(k): k for k in REFERENCE_RANGES.keys() }
 
-    for r in results:
-        ref = get_reference(r["name"]) or {"low": None, "high": None, "unit": r.get("unit", ""), "category": "Other"}
-        val = float(r["value"])
+
+def _normalize_parsed_details(details: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Ensure each detail has name,value,unit,reference_range,status,note"""
+    out = []
+    for d in details:
+        name = d.get("name") or d.get("test") or d.get("analyte") or "unknown"
+        try:
+            value = float(d.get("value")) if d.get("value") is not None else 0.0
+        except (ValueError, TypeError):
+            value = 0.0
+            
+        unit = d.get("unit") or d.get("units") or ""
+        
+        # Try to find canonical name
+        normalized_name = _normalize(name)
+        canonical = None
+        for k in NORMALIZED_REF_MAP:
+            if k in normalized_name or normalized_name in k:
+                canonical = NORMALIZED_REF_MAP[k]
+                break
+        
+        ref_obj = REFERENCE_RANGES.get(canonical) if canonical else None
+        ref_str = f"{ref_obj['low']} - {ref_obj['high']}" if ref_obj else "N/A"
         
         status = "normal"
-        if ref["low"] is not None and val < ref["low"]:
-            status = "low"
-            abnormal_count += 1
-        elif ref["high"] is not None and val > ref["high"]:
-            status = "high"
-            abnormal_count += 1
-
-        range_str = f"{ref['low']}–{ref['high']} {ref['unit']}" if ref["low"] is not None and ref["high"] is not None else "—"
+        note = d.get("note") or ""
         
-        details.append({
-            "name": r["name"],
-            "value": val,
-            "unit": ref["unit"] or r.get("unit", ""),
-            "reference_range": range_str,
+        if ref_obj:
+            if value < ref_obj["low"]:
+                status = "low"
+                note = note or f"Below reference range ({ref_obj['low']} {ref_obj['unit']})"
+            elif value > ref_obj["high"]:
+                status = "high"
+                note = note or f"Above reference range ({ref_obj['high']} {ref_obj['unit']})"
+        
+        out.append({
+            "name": name,
+            "value": value,
+            "unit": unit,
+            "reference_range": ref_str,
             "status": status,
-            "note": "Below reference range. Discuss with your healthcare provider." if status == "low" 
-                   else "Above reference range. Discuss with your healthcare provider." if status == "high"
-                   else "Within reference range."
+            "note": note,
         })
+    return out
 
-    if abnormal_count > 0:
-        summary.append(f"{abnormal_count} value(s) outside reference range. This does not diagnose any condition—always share your full report with a doctor.")
-    elif details:
-        summary.append("All reported values are within reference ranges. Keep following your provider's advice.")
 
+def fallback_analysis(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Perform local analysis when AI is unavailable."""
+    normalized = _normalize_parsed_details(results)
+    
+    grocery_list = get_targeted_groceries(normalized)
+    
     return {
-        "summary": summary or ["Enter results above and click Analyze to get an interpretation."],
-        "details": details,
-        "suggestions": [],
-        "grocery_list": [],
-        "recipes": [],
-        "disclaimer": "This tool is for education only. It is not a substitute for medical advice. Always consult a qualified healthcare provider about your lab results."
+        "details": normalized,
+        "suggestions": [
+            "Consult with a healthcare professional regarding abnormal results.",
+            "Maintain a balanced diet and regular exercise.",
+            "Consider re-testing in 3-6 months if lifestyle changes are made."
+        ],
+        "grocery_list": grocery_list,
+        "disclaimer": "This analysis is for informational purposes only and does not constitute medical advice. Always seek the advice of your physician or other qualified health provider with any questions you may have regarding a medical condition."
     }
 
-async def analyze_blood_test(results: List[Dict], patient_info: Dict = None):
-    api_key = os.getenv("GOOGLE_API_KEY", "").strip()
 
-    if not api_key:
-        return fallback_analysis(results, patient_info)
+async def analyze_blood_test(data: Union[str, List[Dict[str, Any]]], patient_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Primary analysis entrypoint. Handles both raw text and structured data."""
+    results = []
+    
+    if isinstance(data, str):
+        # Naive parse for raw text
+        lines = [l.strip() for l in data.splitlines() if l.strip()]
+        for ln in lines:
+            m = re.match(r"([A-Za-z /]+)\s+([0-9]+\.?[0-9]*)\s*([a-zA-Z/%^0-9]*)", ln)
+            if m:
+                results.append({
+                    "name": m.group(1).strip(),
+                    "value": m.group(2),
+                    "unit": m.group(3).strip()
+                })
+    else:
+        results = data
 
-    def _ref_str(name):
-        ref = get_reference(name)
-        if ref:
-            return f"{ref['low']}–{ref['high']} {ref.get('unit', '')}"
-        return "n/a"
+    # Try Gemini if API key is present
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if api_key and api_key != "your-gemini-api-key-here":
+        try:
+            return await analyze_with_gemini(results, patient_info)
+        except Exception as e:
+            logger.error(f"Gemini analysis failed: {e}")
+            # Fallback to local
+    
+    return fallback_analysis(results)
 
-    ref_blob = "\n".join([
-        f"{r['name']}: {r['value']} {r.get('unit', '')} (ref: {_ref_str(r['name'])})"
-        for r in results
-    ])
 
-    prompt = f"""You are a helpful medical education assistant. The user has shared blood test results. Your job is to:
-1. Briefly summarize the overall picture in 2–4 short, clear sentences. Mention which values are normal, low, or high.
-2. For each result, state: value, reference range, normal/low/high, and a one-sentence plain-language note. Do not diagnose diseases or prescribe.
-3. Give 1–3 practical suggestions (e.g., "Discuss these results with your doctor," "Consider repeating fasting glucose").
-4. Provide a "grocery_list": an array of EXACTLY what to buy—specific, shoppable items with pack sizes or quantities. Each entry must be concrete, e.g. "Fresh spinach, 1 bag (≈200 g)". No vague categories. 8–16 items.
-5. Provide a "recipes": array of 3–5 simple recipes that USE the grocery_list items.
+async def analyze_with_gemini(results: List[Dict[str, Any]], patient_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Use Gemini to perform detailed analysis."""
+    api_key = os.getenv("GOOGLE_API_KEY")
+    client = genai.Client(api_key=api_key)
+    
+    prompt = f"""
+    Analyze the following blood test results and provide a structured JSON response.
+    
+    Patient Info: {json.dumps(patient_info) if patient_info else "Not provided"}
+    Results: {json.dumps(results)}
+    
+    IMPORTANT: 
+    1. Be highly accurate with the 'status' (low, normal, high). 
+    2. For vitamins (like Vitamin D, B12) and hormones (like TSH), ensure you use standard clinical reference ranges. 
+    3. If a value is extremely high (e.g., >1000) or extremely low, it MUST be flagged as 'high' or 'low', never 'normal'.
+    4. Provide specific notes explaining why a value is flagged.
+    5. The 'grocery_list' MUST be an object with two keys: 'veg' and 'non_veg', each containing a list of strings.
 
-Patient context (if any): {patient_info or {}}
-
-Results:
-{ref_blob}
-
-Respond in valid JSON only:
-{{
-  "summary": ["string"],
-  "details": [{{"name": "...", "value": 0, "unit": "...", "reference_range": "...", "status": "normal|low|high", "note": "..."}}],
-  "suggestions": ["string"],
-  "grocery_list": ["Fresh spinach, 1 bag"],
-  "recipes": [{{"name": "...", "ingredients": ["..."], "instructions": ["..."]}}],
-  "disclaimer": "This is for education only."
-}}"""
-
-    try:
-        client = genai.Client(api_key=api_key)
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model="gemini-2.0-flash",
-            contents=prompt,
+    The response MUST be a JSON object matching this schema:
+    {{
+        "details": [
+            {{
+                "name": "string",
+                "value": number,
+                "unit": "string",
+                "reference_range": "string",
+                "status": "normal|low|high",
+                "note": "string"
+            }}
+        ],
+        "suggestions": ["string"],
+        "grocery_list": {{
+            "veg": ["string"],
+            "non_veg": ["string"]
+        }},
+        "disclaimer": "string"
+    }}
+    
+    Focus on nutritional advice and lifestyle changes. Be professional and cautious.
+    """
+    
+    response = client.models.generate_content(
+        model="gemini-1.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json"
         )
-
-        raw = response.text.strip()
-        cleaned = raw.replace("```json\n", "").replace("\n```", "").strip()
-        parsed = json.loads(cleaned)
-
-        return {
-            "summary": parsed.get("summary", []),
-            "details": parsed.get("details", []),
-            "suggestions": parsed.get("suggestions", []),
-            "grocery_list": parsed.get("grocery_list", []),
-            "recipes": parsed.get("recipes", []),
-            "disclaimer": parsed.get("disclaimer", "This is for education only. Not medical advice.")
-        }
-    except Exception as e:
-        logger.error("Gemini API error: %s", e)
-        return fallback_analysis(results, patient_info)
-
-
-async def analyze_pdf_text(text: str):
-    api_key = os.getenv("GOOGLE_API_KEY", "").strip()
-
-    if not api_key:
-        return {
-            "summary": ["PDF analysis requires an AI API key. Configure GOOGLE_API_KEY in backend/.env to enable AI-powered PDF analysis."],
-            "details": [],
-            "suggestions": ["Add your Google Gemini API key to backend/.env to analyze PDF reports."],
-            "grocery_list": [],
-            "recipes": [],
-            "disclaimer": "This tool is for education only. It is not a substitute for medical advice."
-        }
-
-    prompt = f"""You are a medical education assistant. The user has uploaded a blood test report as a PDF. Your job is to:
-1. Extract ALL blood test values from the text below (name, numeric value, unit, and reference range if present).
-2. For each test value, determine if it is normal, low, or high based on standard medical reference ranges.
-3. Provide a brief summary in 2-4 sentences covering overall health picture.
-4. Give 1-3 practical suggestions.
-5. Provide a "grocery_list" of 8-16 specific, shoppable food items relevant to the results.
-6. Provide 3-5 simple recipes using those grocery items.
-
-PDF report text:
-{text[:10000]}
-
-Respond in valid JSON only:
-{{
-  "summary": ["string"],
-  "details": [{{"name": "...", "value": 0, "unit": "...", "reference_range": "...", "status": "normal|low|high", "note": "..."}}],
-  "suggestions": ["string"],
-  "grocery_list": ["specific item with quantity"],
-  "recipes": [{{"name": "...", "ingredients": ["..."], "instructions": ["..."]}}],
-  "disclaimer": "This is for education only. Not medical advice."
-}}"""
-
+    )
+    
     try:
-        client = genai.Client(api_key=api_key)
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-        raw = response.text.strip()
-        cleaned = raw.replace("```json\n", "").replace("\n```", "").strip()
-        parsed = json.loads(cleaned)
-        return {
-            "summary": parsed.get("summary", []),
-            "details": parsed.get("details", []),
-            "suggestions": parsed.get("suggestions", []),
-            "grocery_list": parsed.get("grocery_list", []),
-            "recipes": parsed.get("recipes", []),
-            "disclaimer": parsed.get("disclaimer", "This is for education only. Not medical advice.")
-        }
+        return json.loads(response.text)
     except Exception as e:
-        logger.error("Gemini PDF analysis error: %s", e)
-        return {
-            "summary": ["Could not analyze the PDF. Please try again or use manual entry."],
-            "details": [],
-            "suggestions": [],
-            "grocery_list": [],
-            "recipes": [],
-            "disclaimer": "This tool is for education only. It is not a substitute for medical advice."
-        }
+        logger.error(f"Failed to parse Gemini response: {e}\nResponse: {response.text}")
+        raise
+
+
+async def analyze_pdf_text(text: str, patient_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Wrapper used by routes when plain text is extracted from a PDF."""
+    try:
+        return await analyze_blood_test(text, patient_info)
+    except Exception as e:
+        logger.exception("Error in analyze_pdf_text")
+        return fallback_analysis([])
+
+
+async def analyze_file_multimodal(content: bytes, mime_type: str, patient_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Process binary content (image/pdf) using Gemini Multimodal."""
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key or api_key == "your-gemini-api-key-here":
+        return fallback_analysis([])
+
+    client = genai.Client(api_key=api_key)
+    
+    prompt = f"""
+    Analyze this blood test report image/PDF. Extract all lab values and provide a detailed health analysis.
+
+    Patient Info: {json.dumps(patient_info) if patient_info else "Not provided"}
+
+    IMPORTANT: 
+    1. Be highly accurate with the 'status' (low, normal, high). 
+    2. For vitamins (like Vitamin D, B12) and hormones (like TSH), ensure you use standard clinical reference ranges. 
+    3. If a value is extremely high or extremely low, it MUST be flagged as 'high' or 'low', never 'normal'.
+    4. Extract the exact 'reference_range' if printed on the report, otherwise use standard clinical ranges.
+    5. The 'grocery_list' MUST be an object with two keys: 'veg' and 'non_veg', each containing a list of strings.
+
+    The response MUST be a JSON object matching this schema:
+    {{
+        "details": [
+            {{
+                "name": "string",
+                "value": number,
+                "unit": "string",
+                "reference_range": "string",
+                "status": "normal|low|high",
+                "note": "string"
+            }}
+        ],
+        "suggestions": ["string"],
+        "grocery_list": {{
+            "veg": ["string"],
+            "non_veg": ["string"]
+        }},
+        "disclaimer": "string"
+    }}
+    """
+    
+    try:
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=[
+                prompt,
+                types.Part.from_bytes(data=content, mime_type=mime_type)
+            ],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json"
+            )
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        logger.error(f"Multimodal Gemini analysis failed: {e}")
+        return fallback_analysis([])
