@@ -41,6 +41,28 @@ docker compose down -v       # stop + delete MongoDB data
 
 ---
 
+## Testing
+
+The project uses `pytest` for backend testing.
+
+### Running Tests Locally
+To run the tests, you need to have the backend dependencies installed:
+
+```bash
+cd backend
+pip install -r requirements.txt
+pytest
+```
+
+### Running Tests in Docker
+You can also run tests within the backend container:
+
+```bash
+docker compose exec backend pytest
+```
+
+---
+
 ## How the app works
 
 ### User flow
